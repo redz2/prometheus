@@ -1,0 +1,89 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmware-exporter
+  namespace: devops
+spec:
+  ports:
+  - name: http
+    port: 9272
+    protocol: TCP
+    targetPort: 9272
+  selector:
+    app: vmware-exporter
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: v1
+data:
+  config.yml: |-
+    default:
+      vsphere_host: "XXX"
+      vsphere_user: "XXX"
+      vsphere_password: "XXX"
+      ignore_ssl: False
+      specs_size: 5000
+      fetch_custom_attributes: True
+      fetch_tags: True
+      fetch_alarms: True
+      collect_only:
+          vms: False
+          vmguests: False
+          datastores: True
+          hosts: True
+          snapshots: True
+kind: ConfigMap
+metadata:
+  name: vmware-exporter-config
+  namespace: devops
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: vmware-exporter
+  name: vmware-exporter
+  namespace: devops
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: vmware-exporter
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: vmware-exporter
+    spec:
+      containers:
+      - args:
+        - -c 
+        - /opt/vmware_exporter/config.yml
+        image: pryorda/vmware_exporter:v0.18.4
+        imagePullPolicy: IfNotPresent
+        name: vmware-exporter
+        ports:
+        - containerPort: 9272
+          protocol: TCP
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+        volumeMounts:
+        - mountPath: /opt/vmware_exporter/config.yml
+          subPath: config.yml
+          name: config
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: vmware-exporter-config
+        name: config
